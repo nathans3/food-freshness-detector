@@ -31,3 +31,7 @@ env/
 # VS Code
 .vscode/
 model/export.pkl
+data/food_freshness/fresh/*.png
+data/food_freshness/rotten/*.png
+data/food_freshness/slightly_spoiled/*.png
+data/

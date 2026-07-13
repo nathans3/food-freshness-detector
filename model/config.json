@@ -1,0 +1,5 @@
+{
+  "arch": "resnet18",
+  "n_classes": 3,
+  "img_size": 224
+}

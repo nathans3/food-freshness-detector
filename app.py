@@ -1,11 +1,12 @@
 from pathlib import Path
+import json
+import torch
 
 import gradio as gr
-from fastai.learner import load_learner
-from fastai.vision.core import PILImage
+from fastai.vision.all import *
 from PIL import Image
 
-MODEL_PATH = Path("model/export.pkl")
+MODEL_DIR = Path("model")
 CLASS_DESCRIPTIONS = {
     "fresh": "Looks fresh and ready to eat.",
     "slightly_spoiled": "Shows mild spoilage signs; inspect before eating.",
@@ -14,14 +15,30 @@ CLASS_DESCRIPTIONS = {
 
 learner = None
 load_error = None
-if MODEL_PATH.exists() and MODEL_PATH.stat().st_size > 0:
+vocab = []
+
+# Load model from safe format (no pickle)
+if (MODEL_DIR/'model_weights.pth').exists():
     try:
-        learner = load_learner(MODEL_PATH)
+        # Load config and vocab
+        with open(MODEL_DIR/'config.json') as f:
+            config = json.load(f)
+        with open(MODEL_DIR/'vocab.json') as f:
+            vocab = json.load(f)
+        
+        # Create model architecture
+        model = create_cnn_model(resnet18, config['n_classes'])
+        
+        # Load weights
+        model.load_state_dict(torch.load(MODEL_DIR/'model_weights.pth', map_location='cpu'))
+        model.eval()
+        
+        learner = model
     except Exception as exc:
         load_error = str(exc)
 else:
     load_error = (
-        "Model file not found or empty at model/export.pkl. "
+        "Model weights not found at model/model_weights.pth. "
         "Run train.ipynb and export the learner first."
     )
 
@@ -34,16 +51,29 @@ def predict_freshness(image: Image.Image):
             load_error or "Unknown model loading error.",
         )
 
-    # Save temp file and load via path (avoids PILImage conversion issues)
-    import tempfile
-    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
-        image.save(tmp.name)
-        fastai_image = PILImage.create(tmp.name)
+    # Prepare image for inference
+    from torchvision import transforms
     
-    pred_class, pred_idx, probs = learner.predict(fastai_image)
-    pred_class = str(pred_class)
+    preprocess = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    
+    img_tensor = preprocess(image).unsqueeze(0)  # Add batch dimension
+    
+    # Get predictions
+    with torch.no_grad():
+        logits = learner(img_tensor)
+        probs = torch.nn.functional.softmax(logits, dim=1)[0]
+    
+    # Get predicted class
+    pred_idx = torch.argmax(probs).item()
+    pred_class = vocab[pred_idx]
 
-    confidence = {learner.dls.vocab[i]: float(probs[i]) for i in range(len(probs))}
+    # Build confidence dict
+    confidence = {vocab[i]: float(probs[i]) for i in range(len(probs))}
     confidence = dict(sorted(confidence.items(), key=lambda item: item[1], reverse=True))
 
     description = CLASS_DESCRIPTIONS.get(pred_class, "No class description available.")
