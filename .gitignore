@@ -30,3 +30,4 @@ env/
 
 # VS Code
 .vscode/
+model/export.pkl
