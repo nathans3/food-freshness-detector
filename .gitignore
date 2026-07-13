@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# macOS
+.DS_Store
+
+# Data artifacts
+/data/raw/
+/data/processed/
+
+# Model checkpoints (keep final exported model)
+*.pth
+*.pt
+*.ckpt
+
+# VS Code
+.vscode/
