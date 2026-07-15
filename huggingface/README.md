@@ -9,31 +9,26 @@ app_file: app.py
 pinned: false
 ---
 
-# Food Freshness Detector (Hugging Face Space)
+# Food Freshness Detector
 
-This Space hosts a FastAI + Gradio image classifier for food freshness:
+A FastAI + Gradio image classifier that predicts the freshness of fruits and vegetables.
 
-- Fresh
-- Slightly Spoiled
-- Rotten
+Upload a photo and it will classify the food as one of:
+- **Fresh** — looks good, ready to eat
+- **Slightly Spoiled** — shows mild spoilage signs; inspect before eating
+- **Rotten** — likely spoiled and unsafe to consume
 
-## Required Files in Space Root
+## Model
 
-- `app.py`
-- `requirements.txt`
-- `model/export.pkl`
-- `assets/demo.png` (optional example image)
+- Architecture: ResNet18 (transfer learning via FastAI)
+- Input: RGB image, resized to 224×224
+- Output: 3-class softmax probabilities
 
-## Deploy Steps
+## Files
 
-1. Create a new **Gradio Space** on Hugging Face.
-2. Upload repository files (or connect your GitHub repo).
-3. Ensure `model/export.pkl` is present and non-empty.
-4. Wait for build to finish.
-5. Test with sample fruit/vegetable images.
-
-## Common Issues
-
-- If build fails, verify pinned package versions in `requirements.txt`.
-- If app loads but predicts nothing, check `model/export.pkl` compatibility with current fastai version.
-- If classes look incorrect, verify your training folder names and export file.
+- `app.py` — Gradio inference app
+- `requirements.txt` — Python dependencies
+- `model/config.json` — architecture config (`arch`, `n_classes`, `img_size`)
+- `model/vocab.json` — class labels
+- `model/model_weights.pth` — trained ResNet18 weights (~45 MB)
+- `assets/demo.png` — example image

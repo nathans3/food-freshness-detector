@@ -1,45 +1,70 @@
-from pathlib import Path
 import json
-import torch
+import os
+from pathlib import Path
 
 import gradio as gr
-from fastai.vision.all import *
+import torch
+from fastai.vision.all import create_cnn_model, resnet18
 from PIL import Image
 
 MODEL_DIR = Path("model")
+HF_MODEL_REPO = os.environ.get("HF_MODEL_REPO", "nathansekar/food-freshness-detector")
+
 CLASS_DESCRIPTIONS = {
     "fresh": "Looks fresh and ready to eat.",
     "slightly_spoiled": "Shows mild spoilage signs; inspect before eating.",
     "rotten": "Likely spoiled and unsafe to consume.",
 }
 
+
+def download_model_files() -> None:
+    """Download model weights from HF model repo if not already present locally."""
+    weights_path = MODEL_DIR / "model_weights.pth"
+    if weights_path.exists():
+        return
+
+    try:
+        from huggingface_hub import hf_hub_download
+
+        print(f"Downloading model weights from {HF_MODEL_REPO}…")
+        MODEL_DIR.mkdir(exist_ok=True)
+
+        for filename in ("model_weights.pth", "config.json", "vocab.json"):
+            dest = MODEL_DIR / filename
+            if not dest.exists():
+                downloaded = hf_hub_download(repo_id=HF_MODEL_REPO, filename=filename)
+                import shutil
+                shutil.copy(downloaded, dest)
+                print(f"  {filename} ready")
+    except Exception as exc:
+        print(f"WARNING: Could not download model from HF: {exc}")
+
+
+download_model_files()
+
 learner = None
 load_error = None
 vocab = []
 
-# Load model from safe format (no pickle)
-if (MODEL_DIR/'model_weights.pth').exists():
+if (MODEL_DIR / "model_weights.pth").exists():
     try:
-        # Load config and vocab
-        with open(MODEL_DIR/'config.json') as f:
+        with open(MODEL_DIR / "config.json") as f:
             config = json.load(f)
-        with open(MODEL_DIR/'vocab.json') as f:
+        with open(MODEL_DIR / "vocab.json") as f:
             vocab = json.load(f)
-        
-        # Create model architecture
-        model = create_cnn_model(resnet18, config['n_classes'])
-        
-        # Load weights
-        model.load_state_dict(torch.load(MODEL_DIR/'model_weights.pth', map_location='cpu'))
+
+        model = create_cnn_model(resnet18, config["n_classes"])
+        model.load_state_dict(
+            torch.load(MODEL_DIR / "model_weights.pth", map_location="cpu")
+        )
         model.eval()
-        
         learner = model
     except Exception as exc:
         load_error = str(exc)
 else:
     load_error = (
-        "Model weights not found at model/model_weights.pth. "
-        "Run train.ipynb and export the learner first."
+        "Model weights not found. "
+        "Set HF_MODEL_REPO to your Hugging Face model repo ID."
     )
 
 
@@ -51,30 +76,26 @@ def predict_freshness(image: Image.Image):
             load_error or "Unknown model loading error.",
         )
 
-    # Prepare image for inference
     from torchvision import transforms
-    
+
     preprocess = transforms.Compose([
         transforms.Resize(256),
         transforms.CenterCrop(224),
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
-    
-    img_tensor = preprocess(image).unsqueeze(0)  # Add batch dimension
-    
-    # Get predictions
+
+    img_tensor = preprocess(image).unsqueeze(0)
+
     with torch.no_grad():
         logits = learner(img_tensor)
         probs = torch.nn.functional.softmax(logits, dim=1)[0]
-    
-    # Get predicted class
+
     pred_idx = torch.argmax(probs).item()
     pred_class = vocab[pred_idx]
 
-    # Build confidence dict
     confidence = {vocab[i]: float(probs[i]) for i in range(len(probs))}
-    confidence = dict(sorted(confidence.items(), key=lambda item: item[1], reverse=True))
+    confidence = dict(sorted(confidence.items(), key=lambda x: x[1], reverse=True))
 
     description = CLASS_DESCRIPTIONS.get(pred_class, "No class description available.")
 
@@ -115,4 +136,5 @@ with gr.Blocks(theme=gr.themes.Soft(), title=title) as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch()
+    port = int(os.environ.get("PORT", 7860))
+    demo.launch(server_name="0.0.0.0", server_port=port)
